@@ -1,4 +1,5 @@
 use std::io::Read;
+use zkbrainfuck::code;
 use zkbrainfuck::interpreter;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -7,6 +8,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut f = std::fs::File::open(&args[1])?;
     let mut c: Vec<u8> = Vec::new();
     f.read_to_end(&mut c)?;
-    let mut i = interpreter::Interpreter::default();
-    i.run(c)
+    let mut i = interpreter::Interpreter::new();
+    i.set_code(code::compile(c));
+    i.run();
+    Ok(())
 }
