@@ -13,9 +13,14 @@ pub struct Register {
     pub memory_value_inverse: Fq,
 }
 
+impl Register {
+    fn ip(&self) -> usize {
+        self.instruction_pointer.get_lower_128() as usize
+    }
+}
+
 pub struct Interpreter {
     pub code: Vec<Fq>,
-    pub ip: usize,
     pub mp: usize,
     pub memory: Vec<u8>,
     pub register: Register,
@@ -25,7 +30,6 @@ impl Interpreter {
     pub fn new() -> Self {
         Self {
             code: Vec::new(),
-            ip: 0,
             mp: 0,
             memory: vec![0],
             register: Register::default(),
@@ -44,63 +48,63 @@ impl Interpreter {
             self.register.next_instruction = self.code[1];
         }
         loop {
-            if self.ip >= self.code.len() {
+            if self.register.instruction_pointer >= Fq::from(self.code.len() as u64) {
                 break;
             }
             match self.register.current_instruction.get_lower_128() as u8 {
                 code::SHL => {
                     self.mp -= 1;
-                    self.ip += 1;
+                    self.register.instruction_pointer += Fq::one();
                 }
                 code::SHR => {
                     self.mp += 1;
                     if self.mp == self.memory.len() {
                         self.memory.push(0)
                     }
-                    self.ip += 1;
+                    self.register.instruction_pointer += Fq::one();
                 }
                 code::ADD => {
                     self.memory[self.mp] = self.memory[self.mp].wrapping_add(1);
-                    self.ip += 1;
+                    self.register.instruction_pointer += Fq::one();
                 }
                 code::SUB => {
                     self.memory[self.mp] = self.memory[self.mp].wrapping_sub(1);
-                    self.ip += 1;
+                    self.register.instruction_pointer += Fq::one();
                 }
                 code::GETCHAR => {
                     let mut buf: Vec<u8> = vec![0; 1];
                     std::io::stdin().read_exact(&mut buf).unwrap();
                     self.memory[self.mp] = buf[0];
-                    self.ip += 1;
+                    self.register.instruction_pointer += Fq::one();
                 }
                 code::PUTCHAR => {
                     std::io::stdout().write_all(&[self.memory[self.mp]]).unwrap();
-                    self.ip += 1;
+                    self.register.instruction_pointer += Fq::one();
                 }
                 code::LB => {
                     if self.memory[self.mp] == 0x00 {
-                        self.ip = self.code[self.ip + 1].get_lower_128() as usize;
+                        self.register.instruction_pointer = self.code[self.register.ip() + 1];
                     } else {
-                        self.ip += 2;
+                        self.register.instruction_pointer += Fq::from(2);
                     }
                 }
                 code::RB => {
                     if self.memory[self.mp] != 0x00 {
-                        self.ip = self.code[self.ip + 1].get_lower_128() as usize;
+                        self.register.instruction_pointer = self.code[self.register.ip() + 1];
                     } else {
-                        self.ip += 2;
+                        self.register.instruction_pointer += Fq::from(2);
                     }
                 }
                 _ => unreachable!(),
             }
             self.register.cycle += Fq::one();
-            if self.ip < self.code.len() {
-                self.register.current_instruction = self.code[self.ip];
+            if self.register.instruction_pointer < Fq::from(self.code.len() as u64) {
+                self.register.current_instruction = self.code[self.register.ip()];
             } else {
                 self.register.current_instruction = Fq::zero();
             }
-            if self.ip < self.code.len() - 1 {
-                self.register.next_instruction = self.code[self.ip + 1]
+            if self.register.instruction_pointer < Fq::from(self.code.len() as u64) - Fq::one() {
+                self.register.next_instruction = self.code[self.register.ip() + 1];
             } else {
                 self.register.next_instruction = Fq::zero()
             }
