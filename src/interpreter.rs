@@ -1,5 +1,5 @@
 use crate::code;
-use crate::matrix::{InstructionMatrixRow, Matrix};
+use crate::matrix::{InstructionMatrixRow, Matrix, MemoryMatrixRow};
 use halo2_proofs::arithmetic::Field;
 use halo2_proofs::halo2curves::{bn256::Fq, FieldExt};
 use std::io::{Read, Write};
@@ -27,6 +27,7 @@ impl Register {
 
 pub struct Interpreter {
     pub code: Vec<Fq>,
+    pub input: Vec<Fq>,
     pub memory: Vec<Fq>,
     pub register: Register,
     pub matrix: Matrix,
@@ -36,6 +37,7 @@ impl Interpreter {
     pub fn new() -> Self {
         Self {
             code: Vec::new(),
+            input: Vec::new(),
             memory: vec![Fq::zero()],
             register: Register::default(),
             matrix: Matrix::default(),
@@ -44,6 +46,10 @@ impl Interpreter {
 
     pub fn set_code(&mut self, code: Vec<Fq>) {
         self.code = code;
+    }
+
+    pub fn set_input(&mut self, input: Vec<Fq>) {
+        self.input = input;
     }
 
     pub fn run(&mut self) {
@@ -70,6 +76,7 @@ impl Interpreter {
             }
             self.matrix.processor_matrix.push(self.register.clone());
             self.matrix.instruction_matrix.push(InstructionMatrixRow::from(&self.register));
+            self.matrix.memory_matrix.push(MemoryMatrixRow::from(&self.register));
             match self.register.current_instruction.get_lower_128() as u8 {
                 code::SHL => {
                     self.register.memory_pointer -= Fq::one();
@@ -91,13 +98,20 @@ impl Interpreter {
                     self.register.instruction_pointer += Fq::one();
                 }
                 code::GETCHAR => {
-                    let mut buf: Vec<u8> = vec![0; 1];
-                    std::io::stdin().read_exact(&mut buf).unwrap();
-                    self.memory[self.register.mp()] = Fq::from(buf[0] as u64);
+                    let val = if self.input.is_empty() {
+                        let mut buf: Vec<u8> = vec![0; 1];
+                        std::io::stdin().read_exact(&mut buf).unwrap();
+                        Fq::from(buf[0] as u64)
+                    } else {
+                        self.input.remove(0)
+                    };
+                    self.memory[self.register.mp()] = val;
+                    self.matrix.input_matrix.push(val);
                     self.register.instruction_pointer += Fq::one();
                 }
                 code::PUTCHAR => {
                     std::io::stdout().write_all(&[self.register.memory_value.get_lower_128() as u8]).unwrap();
+                    self.matrix.output_matrix.push(self.register.memory_value);
                     self.register.instruction_pointer += Fq::one();
                 }
                 code::LB => {
@@ -137,5 +151,21 @@ impl Interpreter {
         self.matrix.processor_matrix.push(self.register.clone());
         self.matrix.instruction_matrix.push(InstructionMatrixRow::from(&self.register));
         self.matrix.instruction_matrix.sort_by_key(|row| row.instruction_pointer);
+        self.matrix.memory_matrix.sort_by_key(|row| row.memory_pointer);
+        let mut i = 1;
+        while i < self.matrix.memory_matrix.len() - 1 {
+            if self.matrix.memory_matrix[i + 1].memory_pointer == self.matrix.memory_matrix[i].memory_pointer
+                && self.matrix.memory_matrix[i + 1].cycle != self.matrix.memory_matrix[i].cycle + Fq::one()
+            {
+                let interleaved_value = MemoryMatrixRow {
+                    cycle: self.matrix.memory_matrix[i].cycle + Fq::one(),
+                    memory_pointer: self.matrix.memory_matrix[i].memory_pointer,
+                    memory_value: self.matrix.memory_matrix[i].memory_value,
+                    interweave_indicator: Fq::one(),
+                };
+                self.matrix.memory_matrix.insert(i + 1, interleaved_value);
+            }
+            i += 1;
+        }
     }
 }

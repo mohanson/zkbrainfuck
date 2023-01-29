@@ -9,6 +9,10 @@ pub const PUTCHAR: u8 = 0x2E;
 pub const LB: u8 = 0x5B;
 pub const RB: u8 = 0x5D;
 
+pub fn easygen(code: &str) -> Vec<Fq> {
+    code.as_bytes().iter().map(|&x| Fq::from(x as u64)).collect()
+}
+
 pub fn compile(code: Vec<u8>) -> Vec<Fq> {
     let filter = vec![SHL, SHR, ADD, SUB, GETCHAR, PUTCHAR, LB, RB];
     let mut instrs = Vec::<Fq>::new();
