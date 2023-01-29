@@ -1,13 +1,24 @@
-use halo2_proofs::halo2curves::{bn256::Fq, FieldExt};
-
 use crate::code;
+use halo2_proofs::halo2curves::{bn256::Fq, FieldExt};
 use std::io::{Read, Write};
+
+#[derive(Clone, Debug, Default)]
+pub struct Register {
+    pub cycle: Fq,
+    pub instruction_pointer: Fq,
+    pub current_instruction: Fq,
+    pub next_instruction: Fq,
+    pub memory_pointer: Fq,
+    pub memory_value: Fq,
+    pub memory_value_inverse: Fq,
+}
 
 pub struct Interpreter {
     pub code: Vec<Fq>,
     pub ip: usize,
     pub mp: usize,
     pub memory: Vec<u8>,
+    pub register: Register,
 }
 
 impl Interpreter {
@@ -17,6 +28,7 @@ impl Interpreter {
             ip: 0,
             mp: 0,
             memory: vec![0],
+            register: Register::default(),
         }
     }
 
@@ -25,11 +37,17 @@ impl Interpreter {
     }
 
     pub fn run(&mut self) {
+        self.register.current_instruction = self.code[0];
+        if self.code.len() == 1 {
+            self.register.next_instruction = Fq::zero()
+        } else {
+            self.register.next_instruction = self.code[1];
+        }
         loop {
             if self.ip >= self.code.len() {
                 break;
             }
-            match self.code[self.ip].get_lower_128() as u8 {
+            match self.register.current_instruction.get_lower_128() as u8 {
                 code::SHL => {
                     self.mp -= 1;
                     self.ip += 1;
@@ -74,6 +92,17 @@ impl Interpreter {
                     }
                 }
                 _ => unreachable!(),
+            }
+            self.register.cycle += Fq::one();
+            if self.ip < self.code.len() {
+                self.register.current_instruction = self.code[self.ip];
+            } else {
+                self.register.current_instruction = Fq::zero();
+            }
+            if self.ip < self.code.len() - 1 {
+                self.register.next_instruction = self.code[self.ip + 1]
+            } else {
+                self.register.next_instruction = Fq::zero()
             }
         }
     }
