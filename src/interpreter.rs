@@ -1,4 +1,5 @@
 use crate::code;
+use crate::matrix::{InstructionMatrixRow, Matrix};
 use halo2_proofs::arithmetic::Field;
 use halo2_proofs::halo2curves::{bn256::Fq, FieldExt};
 use std::io::{Read, Write};
@@ -28,6 +29,7 @@ pub struct Interpreter {
     pub code: Vec<Fq>,
     pub memory: Vec<Fq>,
     pub register: Register,
+    pub matrix: Matrix,
 }
 
 impl Interpreter {
@@ -36,6 +38,7 @@ impl Interpreter {
             code: Vec::new(),
             memory: vec![Fq::zero()],
             register: Register::default(),
+            matrix: Matrix::default(),
         }
     }
 
@@ -50,10 +53,23 @@ impl Interpreter {
         } else {
             self.register.next_instruction = self.code[1];
         }
+        for i in 0..self.code.len() {
+            self.matrix.instruction_matrix.push(InstructionMatrixRow {
+                instruction_pointer: Fq::from(i as u64),
+                current_instruction: self.code[i],
+                next_instruction: if i == self.code.len() - 1 {
+                    Fq::zero()
+                } else {
+                    self.code[i + 1]
+                },
+            });
+        }
         loop {
             if self.register.instruction_pointer >= Fq::from(self.code.len() as u64) {
                 break;
             }
+            self.matrix.processor_matrix.push(self.register.clone());
+            self.matrix.instruction_matrix.push(InstructionMatrixRow::from(&self.register));
             match self.register.current_instruction.get_lower_128() as u8 {
                 code::SHL => {
                     self.register.memory_pointer -= Fq::one();
@@ -118,5 +134,8 @@ impl Interpreter {
                 self.register.memory_value.invert().unwrap()
             };
         }
+        self.matrix.processor_matrix.push(self.register.clone());
+        self.matrix.instruction_matrix.push(InstructionMatrixRow::from(&self.register));
+        self.matrix.instruction_matrix.sort_by_key(|row| row.instruction_pointer);
     }
 }
