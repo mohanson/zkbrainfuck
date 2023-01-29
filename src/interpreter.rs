@@ -1,4 +1,5 @@
 use crate::code;
+use halo2_proofs::arithmetic::Field;
 use halo2_proofs::halo2curves::{bn256::Fq, FieldExt};
 use std::io::{Read, Write};
 
@@ -17,12 +18,15 @@ impl Register {
     fn ip(&self) -> usize {
         self.instruction_pointer.get_lower_128() as usize
     }
+
+    fn mp(&self) -> usize {
+        self.memory_pointer.get_lower_128() as usize
+    }
 }
 
 pub struct Interpreter {
     pub code: Vec<Fq>,
-    pub mp: usize,
-    pub memory: Vec<u8>,
+    pub memory: Vec<Fq>,
     pub register: Register,
 }
 
@@ -30,8 +34,7 @@ impl Interpreter {
     pub fn new() -> Self {
         Self {
             code: Vec::new(),
-            mp: 0,
-            memory: vec![0],
+            memory: vec![Fq::zero()],
             register: Register::default(),
         }
     }
@@ -53,43 +56,43 @@ impl Interpreter {
             }
             match self.register.current_instruction.get_lower_128() as u8 {
                 code::SHL => {
-                    self.mp -= 1;
+                    self.register.memory_pointer -= Fq::one();
                     self.register.instruction_pointer += Fq::one();
                 }
                 code::SHR => {
-                    self.mp += 1;
-                    if self.mp == self.memory.len() {
-                        self.memory.push(0)
+                    self.register.memory_pointer += Fq::one();
+                    if self.register.mp() == self.memory.len() {
+                        self.memory.push(Fq::zero())
                     }
                     self.register.instruction_pointer += Fq::one();
                 }
                 code::ADD => {
-                    self.memory[self.mp] = self.memory[self.mp].wrapping_add(1);
+                    self.memory[self.register.mp()] += Fq::one();
                     self.register.instruction_pointer += Fq::one();
                 }
                 code::SUB => {
-                    self.memory[self.mp] = self.memory[self.mp].wrapping_sub(1);
+                    self.memory[self.register.mp()] -= Fq::one();
                     self.register.instruction_pointer += Fq::one();
                 }
                 code::GETCHAR => {
                     let mut buf: Vec<u8> = vec![0; 1];
                     std::io::stdin().read_exact(&mut buf).unwrap();
-                    self.memory[self.mp] = buf[0];
+                    self.memory[self.register.mp()] = Fq::from(buf[0] as u64);
                     self.register.instruction_pointer += Fq::one();
                 }
                 code::PUTCHAR => {
-                    std::io::stdout().write_all(&[self.memory[self.mp]]).unwrap();
+                    std::io::stdout().write_all(&[self.register.memory_value.get_lower_128() as u8]).unwrap();
                     self.register.instruction_pointer += Fq::one();
                 }
                 code::LB => {
-                    if self.memory[self.mp] == 0x00 {
+                    if self.memory[self.register.mp()] == Fq::zero() {
                         self.register.instruction_pointer = self.code[self.register.ip() + 1];
                     } else {
                         self.register.instruction_pointer += Fq::from(2);
                     }
                 }
                 code::RB => {
-                    if self.memory[self.mp] != 0x00 {
+                    if self.memory[self.register.mp()] != Fq::zero() {
                         self.register.instruction_pointer = self.code[self.register.ip() + 1];
                     } else {
                         self.register.instruction_pointer += Fq::from(2);
@@ -108,6 +111,12 @@ impl Interpreter {
             } else {
                 self.register.next_instruction = Fq::zero()
             }
+            self.register.memory_value = self.memory[self.register.mp()];
+            self.register.memory_value_inverse = if self.register.memory_value == Fq::zero() {
+                Fq::zero()
+            } else {
+                self.register.memory_value.invert().unwrap()
+            };
         }
     }
 }
