@@ -1,3 +1,5 @@
+use halo2_proofs::halo2curves::bn256::Fq;
+
 pub const SHL: u8 = 0x3C;
 pub const SHR: u8 = 0x3E;
 pub const ADD: u8 = 0x2B;
@@ -7,22 +9,22 @@ pub const PUTCHAR: u8 = 0x2E;
 pub const LB: u8 = 0x5B;
 pub const RB: u8 = 0x5D;
 
-pub fn compile(code: Vec<u8>) -> Vec<u16> {
-    let filter: Vec<u8> = vec![SHL, SHR, ADD, SUB, GETCHAR, PUTCHAR, LB, RB];
-    let mut instrs: Vec<u16> = Vec::new();
-    let mut jstack: Vec<u16> = Vec::new();
+pub fn compile(code: Vec<u8>) -> Vec<Fq> {
+    let filter = vec![SHL, SHR, ADD, SUB, GETCHAR, PUTCHAR, LB, RB];
+    let mut instrs = Vec::<Fq>::new();
+    let mut jstack = Vec::<usize>::new();
     for i in code {
         if !filter.contains(&i) {
             continue;
         }
-        instrs.push(i as u16);
-        if i == LB as u8 {
-            instrs.push(0);
-            jstack.push(instrs.len() as u16 - 1);
+        instrs.push(Fq::from(i as u64));
+        if i == LB {
+            instrs.push(Fq::zero());
+            jstack.push(instrs.len() - 1);
         }
-        if i == RB as u8 {
-            instrs.push(*jstack.last().unwrap() + 1);
-            instrs[*jstack.last().unwrap() as usize] = instrs.len() as u16;
+        if i == RB {
+            instrs.push(Fq::from(*jstack.last().unwrap() as u64 + 1));
+            instrs[*jstack.last().unwrap()] = Fq::from(instrs.len() as u64);
             jstack.pop();
         }
     }
